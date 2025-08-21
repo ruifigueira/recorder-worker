@@ -4,11 +4,15 @@
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "playwright-test",
+	"name": "recorder-worker",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-08-06",
+	"compatibility_flags": ["nodejs_compat"],
 	"observability": {
 		"enabled": true
+	},
+	"browser": {
+		"binding": "MYBROWSER"
 	}
 	/**
 	 * Smart Placement

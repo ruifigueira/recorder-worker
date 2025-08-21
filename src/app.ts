@@ -1,0 +1,211 @@
+// app.ts
+// Minimal UI for recording + inline replay (Tailwind UI)
+
+export function appPage(): Response {
+	const html = `<!doctype html>
+<html lang="en" class="h-full bg-gray-950">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>rrweb Recorder</title>
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="color-scheme" content="dark light" />
+  <style>
+    /* player container tweaks (rrweb-player uses its own CSS) */
+    .player-shell { box-shadow: 0 20px 50px rgba(0,0,0,.35); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  </style>
+</head>
+<body class="h-full text-gray-100">
+  <div class="mx-auto max-w-6xl p-6">
+    <header class="mb-6">
+      <h1 class="text-2xl font-semibold tracking-tight">rrweb Recorder</h1>
+      <p class="text-sm text-gray-400 mt-1">Enter a URL and Playwright steps (JSON). We’ll record with rrweb and render the replay below.</p>
+    </header>
+
+    <section class="rounded-2xl border border-gray-800 bg-gray-900/60 p-5">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs uppercase tracking-wide text-gray-400 mb-1">Default URL</label>
+          <input id="url" type="text" value="https://example.com"
+                 class="w-full rounded-xl border border-gray-800 bg-gray-950 px-3 py-2 text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+          <p class="text-[11px] text-gray-500 mt-1">Used if no <code class="mono">goto</code> step is provided.</p>
+        </div>
+        <div>
+          <label class="block text-xs uppercase tracking-wide text-gray-400 mb-1">Restrict host (optional)</label>
+          <input id="restrictHost" type="text" placeholder="example.com"
+                 class="w-full rounded-xl border border-gray-800 bg-gray-950 px-3 py-2 text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+          <p class="text-[11px] text-gray-500 mt-1">Prevents navigation outside this host.</p>
+        </div>
+      </div>
+
+      <div class="mt-4">
+        <label class="block text-xs uppercase tracking-wide text-gray-400 mb-1">Steps JSON</label>
+        <textarea id="steps" rows="10"
+          class="mono w-full rounded-xl border border-gray-800 bg-gray-950 px-3 py-2 text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50">[
+  { "action": "waitForSelector", "selector": "text=More information" },
+  { "action": "click", "selector": "text=More information" },
+  { "action": "wait", "ms": 1000 }
+]</textarea>
+        <p class="text-[11px] text-gray-500 mt-1">
+          Supported: <code class="mono">goto</code>, <code class="mono">click</code>, <code class="mono">fill</code>, <code class="mono">type</code>,
+          <code class="mono">press</code>, <code class="mono">check</code>, <code class="mono">uncheck</code>,
+          <code class="mono">selectOption</code>, <code class="mono">waitForSelector</code>, <code class="mono">wait</code>.
+        </p>
+      </div>
+
+      <div class="mt-5 flex items-center gap-3">
+        <button id="runBtn"
+          class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-60 disabled:cursor-not-allowed">
+          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M6 4l10 6-10 6V4z"/></svg>
+          Start recording
+        </button>
+        <div id="loader" class="hidden items-center gap-2 text-sm text-gray-300">
+          <svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg>
+          Recording… please wait
+        </div>
+        <div id="error" role="alert" class="text-sm text-rose-400"></div>
+      </div>
+    </section>
+
+    <section class="mt-6">
+      <div id="playerWrap" class="player-shell rounded-2xl border border-gray-800 bg-gray-900/50 p-3"></div>
+    </section>
+  </div>
+
+  <script>
+    const runBtn = document.getElementById('runBtn');
+    const loader = document.getElementById('loader');
+    const urlEl = document.getElementById('url');
+    const restrictHostEl = document.getElementById('restrictHost');
+    const stepsEl = document.getElementById('steps');
+    const playerWrap = document.getElementById('playerWrap');
+    const errEl = document.getElementById('error');
+
+    function setLoading(on) {
+      runBtn.disabled = on;
+      loader.classList.toggle('hidden', !on);
+      loader.classList.toggle('flex', on);
+    }
+
+    function clearPlayer() { playerWrap.innerHTML = ''; }
+
+    function resolvePlayerCtor() {
+      const g = window.rrwebPlayer;
+      return (g && g.default) || g; // 0.7.x typically exposes function on window.rrwebPlayer
+    }
+
+    function ensureCssOnce(href) {
+      if ([...document.styleSheets].some(s => s.href === href)) return;
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = href;
+      document.head.appendChild(link);
+    }
+
+    async function ensurePlayerScript() {
+      if (resolvePlayerCtor()) return;
+
+      const VERSION = '0.7.14';
+      const CSS = \`https://cdn.jsdelivr.net/npm/rrweb-player@\${VERSION}/dist/style.css\`;
+      const CDN_PRIMARY = \`https://cdn.jsdelivr.net/npm/rrweb-player@\${VERSION}/dist/index.js\`;
+      const CDN_FALLBACK = \`https://unpkg.com/rrweb-player@\${VERSION}/dist/index.js\`;
+
+      ensureCssOnce(CSS);
+
+      // Try jsDelivr then unpkg
+      try {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = CDN_PRIMARY;
+          s.onload = resolve;
+          s.onerror = () => reject(new Error('primary failed'));
+          document.head.appendChild(s);
+        });
+      } catch {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = CDN_FALLBACK;
+          s.onload = resolve;
+          s.onerror = () => reject(new Error('fallback failed'));
+          document.head.appendChild(s);
+        });
+      }
+
+      await new Promise(r => setTimeout(r, 0));
+      if (!resolvePlayerCtor()) throw new Error('rrweb-player failed to attach a constructor');
+    }
+
+    async function renderPlayer(events) {
+      clearPlayer();
+      const div = document.createElement('div');
+      div.id = 'player';
+      playerWrap.appendChild(div);
+
+      await ensurePlayerScript();
+      const Player = resolvePlayerCtor();
+
+      if (typeof Player !== 'function') {
+        errEl.textContent = 'rrweb-player failed to load (no constructor found).';
+        console.error('rrweb-player global:', window.rrwebPlayer);
+        return;
+      }
+
+      new Player({
+        target: div,
+        props: {
+          events,
+          width: Math.min(1200, Math.max(800, document.body.clientWidth - 80)),
+          height: 680,
+          autoPlay: true,
+          speed: 1,
+          mouseTail: false,
+          showController: true
+        }
+      });
+    }
+
+    runBtn.addEventListener('click', async () => {
+      errEl.textContent = '';
+      clearPlayer();
+
+      let steps;
+      try {
+        steps = JSON.parse(stepsEl.value || '[]');
+        if (!Array.isArray(steps)) throw new Error('Steps must be an array.');
+      } catch (e) {
+        errEl.textContent = 'Invalid JSON in steps: ' + (e && e.message ? e.message : e);
+        return;
+      }
+
+      const payload = {
+        options: { url: urlEl.value || 'https://example.com', restrictHost: restrictHostEl.value || null },
+        steps
+      };
+
+      setLoading(true);
+      try {
+        const res = await fetch('/record', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const t = await res.text().catch(()=>'');
+          throw new Error('Record failed: ' + res.status + ' ' + t);
+        }
+        const { events } = await res.json();
+        if (!Array.isArray(events)) throw new Error('No events array returned.');
+        await renderPlayer(events);
+      } catch (e) {
+        errEl.textContent = (e && e.message) ? e.message : String(e);
+      } finally {
+        setLoading(false);
+      }
+    });
+  </script>
+</body>
+</html>`;
+	return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+}
