@@ -6,6 +6,8 @@ export type Step =
 	| { action: 'press'; selector: string; key: string }
 	| { action: 'check' | 'uncheck'; selector: string }
 	| { action: 'selectOption'; selector: string; value: string | string[] }
+	| { action: 'mouseMove'; x: number; y: number }
+	| { action: 'hover'; selector: string }
 	| { action: 'waitForSelector'; selector: string; state?: 'attached' | 'detached' | 'visible' | 'hidden' }
 	| { action: 'wait'; ms: number };
 
@@ -52,6 +54,12 @@ export async function runSteps(page: import('@cloudflare/playwright').Page, step
 				break;
 			case 'selectOption':
 				await page.selectOption(s.selector, Array.isArray(s.value) ? s.value : { value: s.value });
+				break;
+			case 'mouseMove':
+				await page.mouse.move(s.x, s.y);
+				break;
+			case 'hover':
+				await page.hover(s.selector);
 				break;
 			case 'waitForSelector':
 				await page.waitForSelector(s.selector, { state: s.state ?? 'visible' });
