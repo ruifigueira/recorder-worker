@@ -1,8 +1,4 @@
-// app.ts
-// Minimal UI for recording + inline replay (Tailwind UI)
-
-export function appPage(): Response {
-	const html = `<!doctype html>
+<!doctype html>
 <html lang="en" class="h-full bg-gray-950">
 <head>
   <meta charset="utf-8" />
@@ -21,14 +17,14 @@ export function appPage(): Response {
   <div class="mx-auto max-w-6xl p-6">
     <header class="mb-6">
       <h1 class="text-2xl font-semibold tracking-tight">rrweb Recorder</h1>
-      <p class="text-sm text-gray-400 mt-1">Enter a URL and Playwright steps (JSON). We’ll record with rrweb and render the replay below.</p>
+      <p class="text-sm text-gray-400 mt-1">Enter a URL and Playwright steps (JSON). We'll record with rrweb and render the replay below.</p>
     </header>
 
     <section class="rounded-2xl border border-gray-800 bg-gray-900/60 p-5">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label class="block text-xs uppercase tracking-wide text-gray-400 mb-1">Default URL</label>
-          <input id="url" type="text" value="https://example.com"
+          <input id="url" type="text" value="https://demo.playwright.dev/todomvc"
                  class="w-full rounded-xl border border-gray-800 bg-gray-950 px-3 py-2 text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
           <p class="text-[11px] text-gray-500 mt-1">Used if no <code class="mono">goto</code> step is provided.</p>
         </div>
@@ -41,17 +37,19 @@ export function appPage(): Response {
       </div>
 
       <div class="mt-4">
-        <label class="block text-xs uppercase tracking-wide text-gray-400 mb-1">Steps JSON</label>
+        <label class="block text-xs uppercase tracking-wide text-gray-400 mb-1">Steps</label>
         <textarea id="steps" rows="10"
-          class="mono w-full rounded-xl border border-gray-800 bg-gray-950 px-3 py-2 text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50">[
-  { "action": "waitForSelector", "selector": "text=More information" },
-  { "action": "click", "selector": "text=More information" },
-  { "action": "wait", "ms": 1000 }
-]</textarea>
+          class="mono w-full rounded-xl border border-gray-800 bg-gray-950 px-3 py-2 text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50">Click "What needs to be done?" field.
+Type buy some cheese.
+Press Enter.
+Type feed the cat.
+Press Enter.
+Type book a doctors appointment.
+Press Enter.
+Mark the second todo as completed.
+</textarea>
         <p class="text-[11px] text-gray-500 mt-1">
-          Supported: <code class="mono">goto</code>, <code class="mono">click</code>, <code class="mono">fill</code>, <code class="mono">type</code>,
-          <code class="mono">press</code>, <code class="mono">check</code>, <code class="mono">uncheck</code>,
-          <code class="mono">selectOption</code>, <code class="mono">waitForSelector</code>, <code class="mono">wait</code>.
+          Type one step per line. Steps can be either natural language or JSON.
         </p>
       </div>
 
@@ -108,9 +106,9 @@ export function appPage(): Response {
       if (resolvePlayerCtor()) return;
 
       const VERSION = '0.7.14';
-      const CSS = \`https://cdn.jsdelivr.net/npm/rrweb-player@\${VERSION}/dist/style.css\`;
-      const CDN_PRIMARY = \`https://cdn.jsdelivr.net/npm/rrweb-player@\${VERSION}/dist/index.js\`;
-      const CDN_FALLBACK = \`https://unpkg.com/rrweb-player@\${VERSION}/dist/index.js\`;
+      const CSS = `https://cdn.jsdelivr.net/npm/rrweb-player@${VERSION}/dist/style.css`;
+      const CDN_PRIMARY = `https://cdn.jsdelivr.net/npm/rrweb-player@${VERSION}/dist/index.js`;
+      const CDN_FALLBACK = `https://unpkg.com/rrweb-player@${VERSION}/dist/index.js`;
 
       ensureCssOnce(CSS);
 
@@ -170,22 +168,17 @@ export function appPage(): Response {
       errEl.textContent = '';
       clearPlayer();
 
-      let steps;
-      try {
-        steps = JSON.parse(stepsEl.value || '[]');
-        if (!Array.isArray(steps)) throw new Error('Steps must be an array.');
-      } catch (e) {
-        errEl.textContent = 'Invalid JSON in steps: ' + (e && e.message ? e.message : e);
-        return;
-      }
-
-      const payload = {
-        options: { url: urlEl.value || 'https://example.com', restrictHost: restrictHostEl.value || null },
-        steps
-      };
-
       setLoading(true);
       try {
+        // non empty lines
+        let steps = stepsEl.value.trim().split('\n').map(s => s.trim()).filter(s => s)
+          .map(s => s.startsWith('{') ? JSON.parse(s) : s);
+  
+        const payload = {
+          options: { url: urlEl.value || 'https://example.com', restrictHost: restrictHostEl.value || null },
+          steps
+        };
+
         const res = await fetch('/record', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -206,6 +199,4 @@ export function appPage(): Response {
     });
   </script>
 </body>
-</html>`;
-	return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } });
-}
+</html>

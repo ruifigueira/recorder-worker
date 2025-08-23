@@ -1,4 +1,6 @@
-export type Step =
+import { Stagehand } from "@cloudflare/stagehand";
+
+export type StructuredStep =
 	| { action: 'goto'; url: string; waitUntil?: 'load' | 'domcontentloaded' | 'networkidle' }
 	| { action: 'click'; selector: string }
 	| { action: 'fill'; selector: string; value: string }
@@ -10,6 +12,9 @@ export type Step =
 	| { action: 'hover'; selector: string }
 	| { action: 'waitForSelector'; selector: string; state?: 'attached' | 'detached' | 'visible' | 'hidden' }
 	| { action: 'wait'; ms: number };
+export type Step = 
+	| StructuredStep
+	| string;
 
 export interface RecordOptions {
 	url?: string; // default target if no 'goto' step is provided
@@ -18,13 +23,19 @@ export interface RecordOptions {
 	restrictHost?: string | null; // e.g. "example.com" to forbid navigating elsewhere
 }
 
-export async function runSteps(page: import('@cloudflare/playwright').Page, steps: Step[], opts: RecordOptions) {
+export async function runSteps(stagehand: Stagehand, steps: Step[], opts: RecordOptions) {
 	const maxSteps = opts.maxSteps ?? 50;
 	if (steps.length > maxSteps) throw new Error(`Too many steps: ${steps.length} > ${maxSteps}`);
+	const { page } = stagehand;
 
 	page.setDefaultTimeout(opts.stepTimeoutMs ?? 15_000);
 
 	for (const [i, s] of steps.entries()) {
+		if (typeof s === 'string') {
+			await page.act(s);
+			continue;
+		}
+
 		switch (s.action) {
 			case 'goto': {
 				if (opts.restrictHost) {
