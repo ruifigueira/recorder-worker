@@ -22,7 +22,7 @@
 	},
 	"dependencies": {
 		"@cloudflare/flame-common": "^4.1.1",
-		"@cloudflare/stagehand": "file:../stagehand/cloudflare",
+		"@cloudflare/stagehand": "https://pkg.pr.new/ruifigueira/stagehand/@cloudflare/stagehand@c28e2b8",
 		"hono": "^4.9.2",
 		"workers-ai-provider": "^0.7.5"
 	}
